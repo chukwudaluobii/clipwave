@@ -82,8 +82,15 @@ async function downloadYouTube(url: string, outPath: string): Promise<void> {
     "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
     "--merge-output-format", "mp4",
     "--no-playlist",
+    // android_vr and web_safari don't gate video-stream URLs behind a PO token, unlike the
+    // default web/mweb clients — avoids most "Sign in to confirm you're not a bot" failures
+    // on datacenter IPs. See https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide.
+    "--extractor-args", "youtube:player_client=android_vr,web_safari,android",
     // TODO(integration): cookies/age-gate handling, rate limiting, and ToS compliance.
   ];
+  if (process.env.YTDLP_COOKIES_PATH) {
+    args.push("--cookies", process.env.YTDLP_COOKIES_PATH);
+  }
   // yt-dlp needs ffmpeg to merge separate video+audio streams. Only point it at an explicit
   // location when FFMPEG_PATH is a real path — otherwise let yt-dlp auto-detect it on PATH
   // (passing a bare "ffmpeg" makes yt-dlp think ffmpeg is missing and skip the merge).
@@ -107,8 +114,11 @@ async function downloadYouTube(url: string, outPath: string): Promise<void> {
       );
     });
     proc.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`YouTube download failed (yt-dlp exit ${code}): ${stderr.slice(-600)}`));
+      if (code === 0) return resolve();
+      const hint = /Sign in to confirm/i.test(stderr)
+        ? " — YouTube is bot-checking this server's IP; set YTDLP_COOKIES_PATH to a cookies.txt from a signed-in account."
+        : "";
+      reject(new Error(`YouTube download failed (yt-dlp exit ${code}): ${stderr.slice(-600)}${hint}`));
     });
   });
 }

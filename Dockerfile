@@ -30,10 +30,17 @@ ENV LOCAL_STORAGE_DIR=/data/storage
 
 # ffmpeg (+ ffprobe) and yt-dlp for the pipeline.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg python3 curl ca-certificates \
+  && apt-get install -y --no-install-recommends ffmpeg python3 curl ca-certificates unzip \
   && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
   && chmod a+rx /usr/local/bin/yt-dlp \
   && rm -rf /var/lib/apt/lists/*
+
+# Deno — the JS runtime yt-dlp's EJS challenge solver uses to defeat YouTube's signature
+# ciphers (https://github.com/yt-dlp/yt-dlp/wiki/EJS). Without it, nsig extraction fails or
+# degrades (missing titles/formats) on many videos.
+RUN curl -fsSL https://deno.com/install.sh | sh -s -- --yes \
+  && mv /root/.deno/bin/deno /usr/local/bin/deno \
+  && rm -rf /root/.deno
 
 # Next.js standalone output + static assets + public + prisma (for migrate deploy at start).
 COPY --from=builder /app/.next/standalone ./
