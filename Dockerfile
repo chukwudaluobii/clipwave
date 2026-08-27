@@ -5,6 +5,10 @@
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
+# youtube-dl-exec's preinstall script requires python3/python on PATH, which this slim
+# base image doesn't have — safe to skip since yt-dlp ships as a standalone binary
+# (downloaded via curl in the runner stage below), not the python-based youtube-dl.
+ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
 RUN npm ci
 
 # ---- builder ----
