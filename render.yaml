@@ -1,7 +1,11 @@
 # One-click "fully online" deploy on Render (https://render.com).
-# In the Render dashboard: New → Blueprint → point at this repo. Render reads this file,
-# provisions a Postgres database, builds the Docker image (ffmpeg + yt-dlp included), and
-# runs the platform in inline mode. Migrations run automatically on boot.
+# In the Render dashboard: New → Blueprint → point at this repo. Render builds the Docker
+# image (ffmpeg + yt-dlp included) and runs the platform in inline mode. Migrations run
+# automatically on boot.
+#
+# Database: this deploy uses an external Postgres (Neon) instead of a Render-managed
+# database — set DATABASE_URL (marked sync:false below) in the service's Environment tab
+# to your Neon connection string.
 #
 # After deploy, open the service URL and sign in with any email — new users get a Starter
 # plan + welcome credits automatically. To go live with real AI, add ANTHROPIC_API_KEY /
@@ -9,12 +13,6 @@
 #
 # NOTE: local disk on hosts is ephemeral (rendered clips are lost on redeploy). For durable
 # output set STORAGE_PROVIDER=s3 and the S3_* vars to any S3-compatible bucket (R2, S3, ...).
-
-databases:
-  - name: clipwave-db
-    databaseName: clipwave
-    user: clipwave
-    plan: free
 
 services:
   - type: web
@@ -36,9 +34,7 @@ services:
       - key: LOCAL_STORAGE_DIR
         value: /data/storage
       - key: DATABASE_URL
-        fromDatabase:
-          name: clipwave-db
-          property: connectionString
+        sync: false # set to your Neon (or other external Postgres) connection string
       - key: NEXTAUTH_SECRET
         generateValue: true
       - key: APP_URL
