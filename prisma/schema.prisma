@@ -1,0 +1,259 @@
+// Clipwave data model. See ARCHITECTURE.md §4.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Enums ───────────────────────────
+enum Plan {
+  STARTER
+  PLUS
+  BUSINESS
+  SCALE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+enum ProjectSource {
+  YOUTUBE
+  UPLOAD
+}
+
+enum ProjectStatus {
+  QUEUED
+  INGESTING
+  TRANSCRIBING
+  DETECTING
+  RENDERING
+  READY
+  FAILED
+}
+
+enum ClipStatus {
+  PENDING
+  RENDERING
+  READY
+  FAILED
+}
+
+enum SocialPlatform {
+  TIKTOK
+  YOUTUBE
+  INSTAGRAM
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+enum LedgerReason {
+  PLAN_GRANT
+  SIGNUP_BONUS
+  JOB_DEBIT
+  JOB_REFUND
+  MANUAL_ADJUST
+}
+
+// ─────────────────────────── Models ──────────────────────────
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime @default(now())
+
+  subscription   Subscription?
+  creditLedger   CreditLedger[]
+  socialAccounts SocialAccount[]
+  projects       Project[]
+  automations    ChannelAutomation[]
+  accounts       Account[]
+  sessions       Session[]
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                 Plan               @default(STARTER)
+  status               SubscriptionStatus @default(INCOMPLETE)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+}
+
+// Append-only ledger. Balance = SUM(delta). See lib/credits.ts.
+model CreditLedger {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta        Int // positive = grant/refund, negative = debit
+  reason       LedgerReason
+  balanceAfter Int
+  note         String?
+  projectId    String?
+  createdAt    DateTime     @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model SocialAccount {
+  id           String         @id @default(cuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform     SocialPlatform
+  handle       String
+  externalId   String?
+  // TODO(integration): store encrypted OAuth tokens in production.
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  status       String         @default("connected")
+  createdAt    DateTime       @default(now())
+
+  posts ScheduledPost[]
+
+  @@unique([userId, platform, handle])
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  source          ProjectSource
+  sourceUrl       String?
+  sourceKey       String? // storage key after ingest
+  rightsConfirmed Boolean       @default(false)
+  language        String?       @default("en")
+  durationSec     Int?
+  creditsCharged  Int           @default(0)
+  status          ProjectStatus @default(QUEUED)
+  progress        Int           @default(0)
+  error           String?
+  // Pipeline options (caption template, overlay choices, target languages, etc.)
+  options         Json?
+  transcript      Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  clips Clip[]
+
+  @@index([userId, createdAt])
+}
+
+model Clip {
+  id              String     @id @default(cuid())
+  projectId       String
+  project         Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title           String
+  startSec        Float
+  endSec          Float
+  score           Float      @default(0)
+  reason          String?
+  status          ClipStatus @default(PENDING)
+  captionTemplate String     @default("bold")
+  captionsJson    Json? // word-level caption cues
+  translations    Json? // { "es": [...cues], "fr": [...] }
+  renderKey       String? // storage key of rendered 9:16 mp4
+  thumbKey        String?
+  width           Int        @default(1080)
+  height          Int        @default(1920)
+  error           String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  posts ScheduledPost[]
+
+  @@index([projectId, score])
+}
+
+model ScheduledPost {
+  id            String         @id @default(cuid())
+  clipId        String
+  clip          Clip           @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  socialAccountId String?
+  socialAccount SocialAccount? @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  platform      SocialPlatform
+  caption       String?
+  description   String?
+  hashtags      String?
+  scheduledAt   DateTime
+  status        PostStatus     @default(DRAFT)
+  externalId    String?
+  error         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([scheduledAt])
+}
+
+// 24/7 YouTube channel monitoring → auto-clip → auto-post.
+model ChannelAutomation {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelUrl    String
+  enabled       Boolean  @default(true)
+  autoPublish   Boolean  @default(false)
+  lastVideoId   String?
+  lastCheckedAt DateTime?
+  options       Json?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ───────────────── NextAuth adapter tables ─────────────────
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

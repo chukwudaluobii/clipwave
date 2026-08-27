@@ -1,0 +1,25 @@
+# Adds a Cloudflare Tunnel in front of the full stack so you can reach Clipwave from your phone
+# over public HTTPS — including installing it as a PWA on the phone.
+#
+# 1) Create a tunnel + public hostname in the Cloudflare Zero Trust dashboard
+#    (Networks → Tunnels), route it to http://app:3000, and copy the tunnel token.
+# 2) Put your tunnel's public URL in .env as PUBLIC_URL (e.g. https://clipwave.example.com),
+#    and the token as TUNNEL_TOKEN.
+# 3) Run BOTH compose files together:
+#      TUNNEL_TOKEN=... PUBLIC_URL=https://clipwave.example.com \
+#      docker compose -f docker-compose.full.yml -f docker-compose.tunnel.yml up --build
+#
+# NextAuth needs to know the public origin, so we pass it through to the app below.
+services:
+  app:
+    environment:
+      APP_URL: ${PUBLIC_URL}
+      NEXTAUTH_URL: ${PUBLIC_URL}
+    # No host port needed; the tunnel reaches the app over the internal network.
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    depends_on:
+      - app

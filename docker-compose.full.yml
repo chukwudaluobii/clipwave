@@ -1,0 +1,50 @@
+# Full stack in one command — the whole platform, frontend connected to a real database.
+#   docker compose -f docker-compose.full.yml up --build
+# Then open http://localhost:3000 and sign in with any email.
+#
+# Runs in INLINE mode: the web container does ingestion, transcription, moment detection,
+# and ffmpeg rendering itself — no Redis or separate worker needed.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clipwave
+      POSTGRES_PASSWORD: clipwave
+      POSTGRES_DB: clipwave
+    volumes:
+      - clipwave_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clipwave"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      QUEUE_DRIVER: inline
+      DATABASE_URL: postgresql://clipwave:clipwave@db:5432/clipwave?schema=public
+      APP_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: please-change-me-to-a-long-random-string
+      STORAGE_PROVIDER: local
+      LOCAL_STORAGE_DIR: /data/storage
+      # Providers default to stub (no keys). Set these to go live:
+      # LLM_PROVIDER: anthropic
+      # ANTHROPIC_API_KEY: sk-ant-...
+      # TRANSCRIPTION_PROVIDER: openai
+      # OPENAI_API_KEY: sk-...
+    ports:
+      - "3000:3000"
+    volumes:
+      - clipwave_storage:/data/storage
+
+volumes:
+  clipwave_pg:
+  clipwave_storage:

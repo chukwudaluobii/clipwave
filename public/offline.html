@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clipwave — Offline</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0; min-height: 100vh; display: grid; place-items: center;
+        font-family: system-ui, sans-serif; color: #e2e8f0;
+        background: radial-gradient(60rem 40rem at 20% -10%, rgba(49,125,255,.25), transparent 60%), #0a0e1a;
+        text-align: center; padding: 24px;
+      }
+      .mark { width: 56px; height: 56px; border-radius: 14px;
+        background: linear-gradient(135deg, #59a3ff, #a855f7); margin: 0 auto 16px; }
+      h1 { font-size: 22px; margin: 0 0 8px; }
+      p { color: #94a3b8; margin: 0 0 20px; }
+      button { background: #317dff; color: #fff; border: 0; border-radius: 12px;
+        padding: 10px 18px; font-weight: 600; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <div class="mark"></div>
+      <h1>You're offline</h1>
+      <p>Clipwave needs a connection to process and load your clips.<br />Reconnect and try again.</p>
+      <button onclick="location.reload()">Retry</button>
+    </div>
+  </body>
+</html>
